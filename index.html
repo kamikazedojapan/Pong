@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pong — HTML/CSS/JS</title>
+  <style>
+    body {
+      margin: 0;
+      background: #0b0f14;
+      color: #fff;
+      font-family: sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+    .menu {
+      text-align: center;
+    }
+    .menu h1 {
+      font-size: 2rem;
+    }
+    .menu button {
+      padding: 10px 20px;
+      font-size: 1rem;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      margin-top: 1rem;
+      background: #22d3ee;
+      color: #000;
+      font-weight: bold;
+    }
+    .board {
+      display: none;
+      position: relative;
+      width: 80vw;
+      aspect-ratio: 16/9;
+      border: 2px solid #22d3ee;
+      border-radius: 12px;
+      overflow: hidden;
+      background: #111827;
+    }
+    canvas { width: 100%; height: 100%; display: block; }
+    .score {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 2rem;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <div class="menu" id="menu">
+    <h1>🎮 Pong</h1>
+    <button id="startBtn">Começar Jogo</button>
+  </div>
+
+  <div class="board" id="board">
+    <canvas id="game" width="1280" height="720"></canvas>
+    <div class="score" id="score">0 : 0</div>
+  </div>
+
+  <script>
+    const menu = document.getElementById('menu');
+    const board = document.getElementById('board');
+    const startBtn = document.getElementById('startBtn');
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.getElementById('score');
+
+    const SETTINGS = {
+      paddle: { w: 16, h: 120, speed: 520 },
+      ball: { r: 10, speed: 420, speedInc: 1.04, maxSpeed: 980 },
+      margin: 22
+    };
+
+    const state = {
+      p1: { x: 0, y: 0, vy: 0, score: 0 },
+      p2: { x: 0, y: 0, vy: 0, score: 0 },
+      ball: { x: 0, y: 0, vx: 0, vy: 0, speed: SETTINGS.ball.speed },
+      paused: false,
+      lastTime: performance.now()
+    };
+
+    function resetPositions() {
+      const w = canvas.width, h = canvas.height;
+      state.p1.x = SETTINGS.margin;
+      state.p2.x = w - SETTINGS.margin - SETTINGS.paddle.w;
+      state.p1.y = state.p2.y = (h - SETTINGS.paddle.h) / 2;
+      state.p1.vy = state.p2.vy = 0;
+      state.ball.x = w / 2;
+      state.ball.y = h / 2;
+      state.ball.vx = (Math.random() > 0.5 ? 1 : -1) * SETTINGS.ball.speed;
+      state.ball.vy = (Math.random() - 0.5) * SETTINGS.ball.speed;
+    }
+
+    function clamp(v, min, max){ return Math.max(min, Math.min(max, v)); }
+
+    const keys = new Set();
+    addEventListener('keydown', e => { if(['ArrowUp','ArrowDown','w','s','W','S',' '].includes(e.key)) e.preventDefault(); keys.add(e.key); });
+    addEventListener('keyup', e => keys.delete(e.key));
+
+    function draw(){
+      const w = canvas.width, h = canvas.height;
+      ctx.clearRect(0,0,w,h);
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(state.p1.x, state.p1.y, SETTINGS.paddle.w, SETTINGS.paddle.h);
+      ctx.fillRect(state.p2.x, state.p2.y, SETTINGS.paddle.w, SETTINGS.paddle.h);
+      ctx.beginPath();
+      ctx.arc(state.ball.x, state.ball.y, SETTINGS.ball.r, 0, Math.PI*2);
+      ctx.fill();
+    }
+
+    function update(dt){
+      const p1 = state.p1; const p2 = state.p2; const ball = state.ball;
+      p1.vy = 0; p2.vy = 0;
+      if (keys.has('w')) p1.vy -= SETTINGS.paddle.speed;
+      if (keys.has('s')) p1.vy += SETTINGS.paddle.speed;
+      if (keys.has('ArrowUp')) p2.vy -= SETTINGS.paddle.speed;
+      if (keys.has('ArrowDown')) p2.vy += SETTINGS.paddle.speed;
+
+      p1.y = clamp(p1.y + p1.vy * dt, 0, canvas.height - SETTINGS.paddle.h);
+      p2.y = clamp(p2.y + p2.vy * dt, 0, canvas.height - SETTINGS.paddle.h);
+
+      ball.x += ball.vx * dt;
+      ball.y += ball.vy * dt;
+
+      if (ball.y < SETTINGS.ball.r && ball.vy < 0) { ball.y = SETTINGS.ball.r; ball.vy *= -1; }
+      if (ball.y > canvas.height - SETTINGS.ball.r && ball.vy > 0) { ball.y = canvas.height - SETTINGS.ball.r; ball.vy *= -1; }
+
+      function collide(px, py, pw, ph) {
+        const nearestX = clamp(ball.x, px, px + pw);
+        const nearestY = clamp(ball.y, py, py + ph);
+        const dx = ball.x - nearestX; const dy = ball.y - nearestY;
+        return (dx*dx + dy*dy) <= (SETTINGS.ball.r * SETTINGS.ball.r);
+      }
+
+      if (collide(p1.x, p1.y, SETTINGS.paddle.w, SETTINGS.paddle.h)) ball.vx *= -1;
+      if (collide(p2.x, p2.y, SETTINGS.paddle.w, SETTINGS.paddle.h)) ball.vx *= -1;
+
+      if (ball.x < 0) { state.p2.score++; updateScore(); resetPositions(); }
+      if (ball.x > canvas.width) { state.p1.score++; updateScore(); resetPositions(); }
+    }
+
+    function updateScore(){ scoreEl.textContent = `${state.p1.score} : ${state.p2.score}`; }
+
+    function loop(t){
+      const dt = Math.min(0.033, (t - state.lastTime) / 1000);
+      state.lastTime = t;
+      update(dt);
+      draw();
+      requestAnimationFrame(loop);
+    }
+
+    startBtn.onclick = () => {
+      menu.style.display = 'none';
+      board.style.display = 'block';
+      resetPositions();
+      updateScore();
+      requestAnimationFrame(loop);
+    };
+  </script>
+</body>
+</html>
